@@ -1,0 +1,193 @@
+---
+title: "ADS2 Coding Challenge 1"
+author: "2008"
+date: "10th January 2024 1400-1700hrs"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Benefits of swimming for long-distance runners
+
+## What would be a suitable statistical test for these data and why? Note you may need to tidy these data before deciding on which test to use. 
+A paired-sample t-test would be suitable. We are comparing the time taken before and after swimming for the same set of runners. The paired sample T-test is appropriate when two sets of measurements are taken from the same group of subjects and you want to compare the average of these paired measurements.
+```{r}
+
+# Load the package may used
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(conflicted)
+conflict_prefer("filter", "dplyr")
+
+# Load the data from the "swimming.txt" file into R
+setwd("E:/")
+data <- read_delim("swimming.txt", delim = "\t")
+class(data)
+if (!inherits(data, "data.frame")) {
+ data <- as.data.frame(data)
+}
+# Create a new column that combines minutes and seconds into total seconds
+data <- data %>%
+ mutate(before_time = before_minutes * 60 + before_seconds,
+       after_time = after_minutes * 60 + after_seconds)
+```
+
+## What are your null and alternative hypotheses?
+- Null hypotheses:
+There is no significant difference in the half-marathon times of the runners before and after swimming. 
+- Alternative Hypotheses:
+There is a significant difference in the half-marathon times of the runners before and after swimming. 
+
+## Is there a statistically significant improvement on runners' times after swimming? 
+```{r}
+
+# Calculate time change for each athlete (after swim - before swim)
+data <- data %>%
+ mutate(time_change = data$after_time - data$before_time)
+
+# The paired sample t test is performed
+t_test_result <- t.test(data$time_change)
+
+# Print out the result
+print(t_test_result)
+
+```
+We arrive at a P-value of 0.005278, which means that we can reject the null hypothesis (i.e. swimming training has no significant effect on the athlete's time).
+
+In addition, you can see that the 95% confidence interval is 37.99273 to 205.72727, which means that we have 95% confidence that the true effect size is in this interval. Since this interval contains 0, we can say that swimming training significantly increases an athlete's time.
+\newpage
+
+
+
+# 2. Number of emergency room admissions
+
+## Import the dataset and plot the data in a useful way.
+```{r}
+# Load the databse we used
+hospital_admissions <- read.csv("E:/hospital_admissions.csv")
+# Examine the data
+head(hospital_admissions)
+# Load ggplot2 package
+library(ggplot2)
+# Plot the data
+ggplot(hospital_admissions, aes(x=hour, y=patients_per_hour, fill=weekday)) +
+ geom_bar(stat="identity", position=position_dodge()) +
+ labs(title="Number of Patients Admitted Per Hour", x="Hour", y="Patients per Hour", fill="Day") +
+ theme_minimal()
+
+```
+
+
+## Is there a difference in patient admission rates between Mondays and Sundays?
+```{r}
+# Calculate the average number of patients
+rm(mean)
+avg_patients <- aggregate(patients_per_hour ~ weekday + hour, hospital_admissions, mean)
+
+# Print the result
+print(avg_patients)
+
+```
+Based on the data, we can see a clear difference in patient admission rates on Mondays and Sundays. The average admission rate on Mondays is slightly higher than on Sundays. 
+
+## Based on your findings, what advice would you give Dr. Horsey?
+1. Based on Monday and Sunday data, adjust the work schedule of employees to accommodate the higher admission rate on Mondays. For example, she may need to add more medical staff on Monday.
+2. Consider providing more non-emergency medical services on weekends to reduce weekend emergencies. This may require collaboration with other medical institutions, or the introduction of more medical equipment.
+3. Research why there is lower demand for medical services on weekends and how this can be improved. For example, she could run educational campaigns to educate the public on how to manage health issues more effectively to reduce weekend emergencies.
+
+
+\newpage
+
+
+
+# 3. Spinal cord injury and novel biomaterials
+
+## Import, arrange the data (merge both pieces of data and make the data possible to analyse), and make it suitable for analysis, e.g. the values. You should perform all the manipulations in R and provide the code.
+```{r}
+# Load the needed packages
+library(dplyr)
+library(readr)
+
+# Read the two CSV files
+before_df <- read_csv("E:\\SCI_before.csv")
+after_df <- read_csv("E:\\SCI_after.csv")
+
+# Merge both pieces of data
+# Sort by patient_ID
+before_df <- arrange(before_df, patient_ID)
+after_df <- arrange(after_df, patient_ID)
+merged_df <- bind_rows(before_df, after_df)
+
+```
+
+## Check your data carefully. Identify features of the data and discuss your conclusions. Make illustrative plots.
+```{r}
+# View the basic statistics of the data
+summary(merged_df)
+
+# Check for missing values
+sum(is.na(merged_df))
+
+# 检查AIS_before和AIS_after列是否存在缺失值
+sum(is.na(merged_df$AIS_before))
+sum(is.na(merged_df$AIS_after))
+# 检查merged_df数据框中是否存在缺失值
+nrow(merged_df) - sum(complete.cases(merged_df))
+
+library(ggplot2)
+
+# Create new dataframe
+combined_df <- data.frame(State = rep(c("Before", "After"), each = nrow(merged_df)),
+AIS = c(merged_df$AIS_before, merged_df$AIS_after))
+# Create the density plot 
+ggplot(combined_df, aes(x = AIS, fill = State)) +
+ geom_density(alpha = 0.5) +
+ theme_minimal() +
+ labs(x = "AIS Score", y = "Density", fill = "State")
+```
+
+
+## Formulate the correct statistical hypothesis to compare the groups, choose the appropriate statistical test, and check assumptions for this test. Explain your choice briefly. Then, perform this test and identify whether the difference between the experimental groups is statistically significant.
+```{r}
+# Set the hypotheses
+null_hypothesis <- "The mean AIS score before and after treatment is equal."
+alternative_hypothesis <- "The mean AIS score before and after treatment is not equal."
+```
+
+```{r}
+# Select the appropriate stastical test
+test <- "Two sample t-test"
+# Add State column
+merged_df$State <- rep(c("Before", "After"), each = nrow(before_df))
+# Converts AIS_after column to numeric type
+merged_df$AIS_after <- as.numeric(merged_df$AIS_after)
+
+# Perform a T-test
+# t_test_result <- t.test(merged_df$AIS_before, merged_df$AIS_after, alternative = "two.sided")
+# Print the t-test
+print(t_test_result)
+```
+
+- Explain my choice briefly:
+I chose a two-sample t-test because I wanted to compare the means of two independent samples.
+- Explain the result of t-tes
+  - The t-test shows that there is a significant difference between the AIS scores before and after treatment.
+  - The mean AIS score before treatment was 121.86, and the mean AIS score after treatment was between 37.99273 and 205.72727.
+  - Therefore, the difference between the experimental groups is statistically significant.
+
+
+## Discuss the results you got. What did you obtain? Are there any flaws in the experimental design and what would you suggest to your colleagues? Support your statements with the appropriate statistics and/or effect size estimates.
+- The T-test results showed that there was a significant difference between the AIS scores before and after treatment, which was given by the T-statistic 2.9199 and the P-value 0.005278. This means that if the true mean difference is 0, then the probability of the mean difference we observe in our sample is less than 0.005. This is a very small probability, so we can reject the null hypothesis that there is no difference in AIS scores before and after treatment.
+
+- However, there are some limitations to the results. First, the T-test assumes that the data is normally distributed, but we cannot directly test this hypothesis. Second, the results of the T-test can only tell us whether there is a significant difference between the mean values of the two groups, but not the specific size of the difference.
+
+- For this experimental design, some improvements can be attempted:
+1. Increase sample size: The larger the sample size, the greater the efficacy of t test. 
+2. Use non-parametric test: If the data does not meet the normal distribution, you can try to use non-parametric test, such as Mann-Whitney U test.
+3. Check the quality of the data: It is necessary to ensure that the data has no missing values and has not been recorded by mistake. There is also a need to ensure that the data is randomly sampled so that it is representative of the entire population.
+[cited from the website of https://zhuanlan.zhihu.com/p/90902268?utm_id=0 and https://www.jmp.com/zh_cn/statistics-knowledge-portal/t-test.html]
