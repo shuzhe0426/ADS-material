@@ -1,0 +1,498 @@
+---
+title: "Group_1_ADS_ICA"
+author: "Group 1"
+date: "2024-04-08"
+output: pdf_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(tidy = TRUE)
+knitr::opts_chunk$set(message=FALSE)
+knitr::opts_chunk$set(warning=FALSE)
+```
+We use `caption` to label figures as **Figure a.b**, representing the figure as the **b^th^** image of part **a**.
+```{r library}
+library(tidyverse)
+library(effsize)
+library(knitr)
+```
+
+### Data import and clean
+```{r collapse = TRUE, tidy=FALSE}
+subuse = read.csv('substance_use.csv')
+# Brief check, No reformat as out of box does not affect for str() result judgement
+str(subuse)
+anyNA(subuse)
+sum(duplicated(subuse))
+```
+
+```{r, eval=FALSE}
+# Detailed check, results too long so we don't show them here.
+for(i in c(1:7)){
+  writeLines(colnames(subuse)[i])
+  print(table(subuse[, i]))
+}
+for(i in c(8:10)){
+  writeLines(colnames(subuse)[i])
+  print(summary(subuse[,i]))
+}
+```
+```{r, collapse = TRUE}
+# Check for violations of "upper >= val >= lower"
+which(!subuse$upper>=subuse$val)
+which(!subuse$upper>=subuse$lower)
+which(!subuse$val>=subuse$lower)
+```
+According to the results, we found and decide to treat problems in following sequences:
+
+1. " - WB" after each location could be deleted.
+2. The metric column isn't essential, so we would delete it and add "_percent" to last 3 columns.
+3. Some columns' classes are wrong(`chr`), so we would convert them to factor class and relocate the general sequence of columns.
+```{r, tidy=FALSE}
+# delete the " - WB"
+subuse_noWB = subuse %>% as_tibble()
+subuse_noWB$location = gsub(" - WB", "", subuse$location)
+# delete the "metric" column and add "_percent"
+subuse_noWB_nometric = subuse_noWB[,-6]
+colnames(subuse_noWB_nometric)[7:9] = paste(colnames(subuse_noWB_nometric)[7:9], 
+                                            "percent", sep = "_")
+# change class to factor and change column order
+subuse_nono_factor_sequence = subuse_noWB_nometric %>%
+  mutate_at(.,c(1:5),as.factor) %>% relocate(.,c(6,2,3,4,5,1,9,7,8))
+subuse_final=subuse_nono_factor_sequence
+# check result
+head(subuse_final, 1)
+```
+
+### Part 1: Exploring the data
+
+**Q1: In 2019, what region of the world has the highest rate of alcohol-related deaths among men aged 40-44?**
+
+To solve this question, we first filter out the interested subset(`subuse_1`). We draw a plot(Figure 1.1) to show the upper, val and lower percent of each location to have a more thorough comparison. 
+```{r, tidy=FALSE, out.height="35%", fig.align='center'}
+# subset filter out
+subuse_1 = subuse_final %>% filter(year == 2019, age == '40 to 44', sex == 'Male', 
+                                   measure == 'Deaths', cause == 'Alcohol use disorders')
+# deaths in different location (Figure 1.1)
+ggplot(subuse_1) +
+  geom_errorbar(aes(x = location, y = val_percent, ymax = upper_percent, 
+                    ymin = lower_percent, col = location), width=0.2) +
+  geom_point(aes(x = location, y = val_percent, col = location),size = 0.7) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Alcohol-Related Deaths Among Men Aged 40-44 by Location in 2019", 
+       x = "", y = "Deaths (%)", caption = "Figure 1.1")
+```
+
+According to the Figure 1.1, even when considering "upper" and "lower" percent, **Europe & Central Asia** has the highest rate of alcohol-related deaths among men aged 40-44 in 2019.
+
+**Q2: Looking at the prevalence of alcohol-related disease in the East Asia and Pacific region, how has this changed over time and in the different age groups? Is there a difference between men and women?**
+
+To solve this question, we first filter out the interested subset(`subuse_2`) and subsets in each sex.
+```{r, tidy=FALSE}
+subuse_2 = subuse_final %>% filter(location == 'East Asia & Pacific', 
+                                   cause == 'Alcohol use disorders', measure == 'Prevalence')
+subuse_2_female = subuse_2 %>% filter(sex == "Female")
+subuse_2_male = subuse_2 %>% filter(sex == "Male")
+```
+As $\frac{Male_{prev}}{Male}+\frac{Female_{prev}}{Female}\neq\frac{Male_{prev}+Female_{prev}}{Male+Female}$, we can't simply add two gender's prevalence together if we don't know their population size. We divide them to different group for better analysis and clearer comparison. Therefore, we first focus on prevalence relationship between different age groups. We plot both male and female's prevalence in Figure 1.2. As each sex's prevalence range differs, we than facet each sex's data under their proper scales in Figure 1.3. 
+```{r, tidy=FALSE, fig.show = 'hold', out.width = '50%'}
+# Both sex (Figure 1.2)
+ggplot(data = subuse_2, aes(x = year, y = val_percent, color = age, shape = sex)) +
+  geom_point(size = 2) +
+  geom_line(aes(group = interaction(age, sex)), size = 1) +
+  labs(title = "Prevalence of Alcohol-Related Disease in East Asia and Pacific Over Time", 
+       x = "Year", y = "Prevalence (%)", caption="Figure 1.2") +
+  theme(plot.title = element_text(size = 12))
+# Facet for male and female (Figure 1.3)
+ggplot(data = subuse_2, aes(x = year, y = val_percent, color = age, shape = sex)) +
+  geom_point(size = 1.3) +
+  geom_line(aes(group = interaction(age, sex)), size = 0.5) +
+  facet_wrap( ~ sex, ncol = 1, scales = "free") +
+  labs(title = "Prevalence of Alcohol-Related Disease in East Asia and Pacific Over Time by sex", 
+       x = "Year", y = "Prevalence (%)", caption = "Figure 1.3") +
+  theme(plot.title = element_text(size = 10.5))
+```
+According to Figure 1.3, we can see: Generally, the younger the age group is, the higher the prevalence is. For exception in **female**, **25 to 29**'s prevalence is between age group **30 to 34** and **35 to 39**, and becomes the highest between 1997 and 2010. In **male**, **25 to 29** is between **40 to 44** and **45 to 49**. **30 to 34** and **35 to 39** age groups have similar prevalence, which are also the highest. To have a better understanding of how has this over-time prevalence trend varies in different age groups, we divided the patterns into following subsets in each gender. **First in Female**: 
+```{r, tidy=FALSE, out.height="30%", fig.width=10, fig.align='center'}
+# divide data according to different pattern
+subuse_2_female_pattern = subuse_2_female %>% mutate(age_pattern = case_when(
+    age %in% c("25 to 29","30 to 34", "35 to 39" ) ~ "pattern_1",
+    age %in% c("40 to 44", "45 to 49", "50 to 54", 
+               "55 to 59", "60 to 64", "65 to 69") ~ "pattern_2"))
+# Pattern 1 and pattern 2 in female (Figure 1.4)
+ggplot(data = subuse_2_female_pattern, aes(x = year, y = val_percent, color = age)) +
+  geom_point(size = 1) +
+  geom_line(aes(group = age),size = 0.4) +
+  facet_wrap(~age_pattern) +
+  labs(title = "Female Prevalence Pattern of Alcohol-Related Disease in East Asia and Pacific", 
+       x = "Year", y = "Prevalence (%)", caption = "Figure 1.4") +
+  theme(axis.text.x = element_text(angle = 45, size=7))
+```
+**Female Pattern 1: 25 to 29, 30 to 34 and 35 to 39**  
+Their prevalence value reach the highest in year 2000. From 1990 to 2000, the prevalence continuously rise. The 25 to 29 group has the highest increasing and decreasing rate with the highest value of prevalence among all the age groups in 2000. After 2000, the 30 to 34 group shows a continuous downstream trend, while the other two groups decreases with periodic increases. For the 35 to 39 group, there is an increase from 2010 to 2015 and for the youngest group, a small increase appears in 2015-2017.  
+**Female Pattern 2: 40 to 44, 45 to 49, 50 to 54, 55 to 59, 60 to 64, 65 to 69**  
+Their prevalence approximately goes up before 1995; from 1995 to around 2015, they firstly decrease and later increase and  after around 2015 they all go downstream. Notably, 65 to 69 group manifested a slightly decrease before 1995. The oldest four groups have the minimum prevalence at 2005 while the other two groups at 2010. The 60 to 64 and 65 to 69 age groups has a gentle decrease from 2000 to 2005.  
+**We then check Male's pattern:**
+```{r, tidy=FALSE, out.height="30%", fig.width=10, fig.align='center'}
+# divide data according to different pattern
+subuse_2_male_pattern = subuse_2_male %>% mutate(age_pattern = case_when(
+    age %in% c("25 to 29", "30 to 34", "35 to 39") ~ "pattern_1",
+    age %in% c("40 to 44", "45 to 49", "50 to 54") ~ "pattern_2",
+    age %in% c("55 to 59", "60 to 64", "65 to 69") ~ "pattern_3"))
+# Pattern 1, 2, 3 in male (Figure 1.5)
+ggplot(data = subuse_2_male_pattern, aes(x = year, y = val_percent, color = age)) +
+  geom_point(size = 1) +
+  geom_line(aes(group = age),size = 0.4) +
+  facet_wrap(~age_pattern) +
+  labs(title = "Male Prevalence Pattern of Alcohol-Related Disease in East Asia and Pacific", 
+       x = "Year", y = "Prevalence (%)", caption = "Figure 1.5") +
+  theme(axis.text.x = element_text(angle = 45, size=7))
+```
+According to Figure 1.5, the trends of prevalence in each age group were similar from 1990 to 2005. There was a rapid increase from 1990 to 1995, with the peak around 1995, followed by a rapid decline from 1995 to 2005. After 2005, we roughly categorize the age groups into three patterns:  
+**Male Pattern 1: 25 to 29, 30 to 34, 35 to 39**  
+From 2005 to 2015, there was minimal change in prevalence among males aged "30 to 34" and "35 to 39", with slight fluctuations and a slight upward trend. However, among males aged "25 to 29", there was an initial increase followed by a decline. From 2015 to 2019, there was a rapid increase in prevalence among males in all three age groups.  
+**Male Pattern 2: 40 to 44, 45 to 49, 50 to 54**  
+From 2005 to 2010, only males in the "50 to 54" age group experienced a slight increase in prevalence, while the other two age groups experienced slight declines. From 2010 to 2019, there was a rapid increase in prevalence among males in all three age groups.  
+**Male Pattern 3: 55 to 59, 60 to 64, 65 to 69**  
+From 2005 to 2017, there was a rapid increase in prevalence among males in all three age groups. From 2017 to 2019, prevalence among males aged "55 to 59" remained relatively unchanged, while prevalence among males aged "60 to 64" and "65 to 69" rapidly declined.  
+**To have a better understanding of difference between men and women, we compare their prevalence in each age groups in Figure 1.6.**
+```{r, tidy=FALSE}
+# Sexes' prevalence comparison in each age group (Figure 1.6)
+ggplot(data = subuse_2, aes(x = year, y = val_percent, color = sex, shape = sex)) +
+  geom_point(size = 1) + 
+  facet_wrap(~age) + 
+  geom_smooth(aes(ymin = lower_percent, ymax = upper_percent,fill=sex), 
+              stat = "identity", alpha = 0.2, linewidth=0.5) +
+  labs(title = "Prevalence of Alcohol-Related Disease in East Asia and Pacific Over Time", 
+       x = "Year", y = "Prevalence (%)", caption = "Figure 1.6") +
+  theme(axis.text.x = element_text(size=7.5, angle = 45), plot.title = element_text(size = 12))
+```
+The top end of the ribbons in the graph represents the upper_percent and the bottom end the lower_percent. This makes it possible to analyse in detail the differences in the prevalence of alcohol-related diseases between genders and different age groups.  
+We can observe differences in patterns and trends in the prevalence of alcohol-related diseases between male and female from 1990 to 2010. Firstly, the prevalence varies over time, but peaks around 1995 and declines after this date until a gradual increase after 2005, with a general trend of increasing and decreasing increments. The prevalence is much higher in males than in females in all age groups. Additionally, the prevalence is always higher in the younger than in the older age groups, and this is particularly evident in the changing profile of males, except in the 25-29 group where it is lower than in the 30-34. However, this is not so evident in women. It can also be seen that the difference in prevalence with age is higher in males than in females.
+
+**Q3: In the United States, there is talk of an “Opioid epidemic”. Part of the problem is that since the late 1990s, doctors have increasingly been prescribing pain killers which can be highly addictive. Looking at the data from the United States, can you confirm an increase in the prevalence of diseases related to opioid use? What age group is the most affected?**
+
+The question refers to the highly addictive painkiller that has been increasingly prescribed **since the late 1990s**, which is considered the cause of the **opioid epidemic**. To confirm the increase in disease prevalence due to opioid use, we chose **1997** as the breakpoint and separated the data into pre-opioid-epidemic and post-opioid-epidemic. Though prescribing of opioids may take time to affect patients, if we want to capture the subtle changes, we need to collect data earlier. So it's reasonable to choose 1997.  
+Same as Q2, we would analyse separately in each gender. We first filter out the data(`subuse_3`) and separate the data to pre-data(`subuse_pre`) and post-data(`subuse_post`).
+```{r}
+subuse_3=filter(subuse_final, measure=="Prevalence", location=="North America", cause=="Opioid use disorders")
+subuse_pre = filter(subuse_3, year >= 1990 & year < 1997)
+subuse_post = filter(subuse_3, year >= 1997)
+```
+We first plot the data to check prevalence change over year (Figure 1.7).
+```{r, tidy=FALSE, out.height="40%", fig.align='center'}
+# prevalence in all age groups in male and female (Figure 1.7)
+ggplot(data = subuse_3, 
+       aes(x = year, y = val_percent, color = age, group = interaction(age, sex))) +
+  geom_point(aes(shape = sex), size = 0.7) +
+  geom_line(linewidth = 0.3) +
+  labs(title = "Opioid-related Disease Prevalance in United States Over time", 
+       x = "Year", y = "Prevalence (%)", caption = "Figure 1.7") +
+  facet_grid( ~ sex) +
+  theme(axis.text.x = element_text(angle = 45, size = 7))
+```
+In each sex and each age group, the opioid-related prevalence increase over time. To confirm an increase in prevalence of diseases related to opioid use, we need to compare the pre- and post-data in a more quantitative way. To preserve the integrity and inter-connectedness of the data as much as possible, we decided to **use the pre-data to get the predicted post-data, and compare the predicted post-data with the real post-data to determine the difference**.  
+From the above plot, we can see the there is a generally **linear relationship** between year and prevalence in all age groups and sexes before 1997. So we decided to model the data by linear regression. We first plot the general relationship of predicted value(dotdashed line) and real value (Figure 1.8)
+```{r, tidy=FALSE}
+# each age group figure with predicted line (Figure 1.8)
+ggplot(data = subuse_3) +
+  geom_line(aes(x = year, y = val_percent, color = sex, group = sex)) +
+  geom_smooth(data = subuse_pre, aes(x = year, y = val_percent, color = sex, group = sex),
+              method = "lm", formula = y~x, linetype = "dotdash", size = 0.4, 
+              fullrange = TRUE, se = FALSE) +
+  facet_wrap(~age, scales="free") +
+  labs(title = "Opioid-related Prevalance in United States Over time by Age", 
+       x = "Year", y = "Prevalence (%)", caption = "Figure 1.8")+
+  theme(axis.text.x = element_text(angle = 45, size=6.5))
+```
+We then quantify all the linear models for each age groups. We write a function `lm_quantify` to make the process reusable.
+```{r}
+lm_quantify <- function(gender) {
+  # get all the age groups
+  age_groups <- unique(subuse_final$age)
+  # create Rable to store each age groups value
+  Rable = data.frame(matrix(nrow = length(age_groups),ncol = 3))
+  # Rable setup
+  rownames(Rable)=age_groups
+  colnames(Rable)=c("adjusted R square", "intercept_pvalue", "year_pvalue")
+  # do linear regression, get and store each age group's value
+  for (i in age_groups) {
+    g_pre <- filter(subuse_pre,age==i&sex==gender)
+    reg <- lm(val_percent~year,g_pre)
+    Rable[i, "adjusted R square"] <- summary(reg)$adj.r.squared
+    Rable[i, "intercept_pvalue"] <- summary(reg)$coefficients["(Intercept)", "Pr(>|t|)"]
+    Rable[i, "year_pvalue"] = summary(reg)$coefficients["year", "Pr(>|t|)"]
+  }
+  return(kable(Rable))
+}
+lm_quantify("Male")
+lm_quantify("Female")
+```
+According to lecture and source we found online, generally, all age groups in both sexes looks nice, except age group **60 to 64** and **65 to 69** in **Male**. We decided to plot the relationship between linear model and original data to see more closely what had happened(Figure 1.9).
+```{r, tidy=FALSE, out.height="35%", fig.align='center'}
+# filter out special age groups' data
+special_age=filter(subuse_3,age %in% c("60 to 64", "65 to 69"), year<1997)
+# plot original data and predicted line together (Figure 1.9)
+ggplot(data = special_age) +
+  geom_point(aes(x = year, y = val_percent, color = sex, group = sex)) +
+  geom_smooth(aes(x = year, y = val_percent, color = sex, group = sex),
+              method = "lm", formula = y~x, linetype = "dotdash", 
+              size = 0.4, fullrange = TRUE, se = FALSE) +
+  facet_wrap(~age) +
+  labs(title = "Opioid-related Prevalance in United States in special age group", 
+       x = "Year", y = "Prevalence (%)", caption = "Figure 1.9") +
+  theme(axis.text.x = element_text(angle = 45, size=6.5))
+```
+According to the plot, the linear regression is generally fine. We also find that in some situation, small R^2^ may be due to the size or distribution of the data itself. As our purpose of the model is to understand relationships between year and val_percent that are evident in visual analyses, then the model may still be useful. So we would still use the models for these two age groups.  
+To determine the relationship, we then do paired `t.test` or `wilcox.test` in different situation. We created function `clever_test` for better reusability.
+```{r}
+# x, y, al=alternative, pair_v=TRUE or FALSE(pair or not)
+clever_test <- function(x, y, al, pair_v) {
+  if (pair_v) {
+    shapiro_result <- shapiro.test(x - y)$p.value # test normal
+    if (shapiro_result <= 0.05) {
+      return(wilcox.test(x, y, alternative = al, paired = TRUE))
+    } else {
+      return(t.test(x, y, alternative = al, paired = TRUE))
+    }
+  } else {
+    # test normal and var_equal
+    shapiro_result_x <- shapiro.test(x)$p.value
+    shapiro_result_y <- shapiro.test(y)$p.value
+    var_result <- var.test(x, y)$p.value
+    if (shapiro_result_x > 0.05 & shapiro_result_y > 0.05) {
+      if (var_result > 0.05) {
+        return(t.test(x, y, alternative = al, paired = FALSE, var.equal = TRUE))
+      } else {
+        return(t.test(x, y, alternative = al, paired = FALSE, var.equal = FALSE))
+      }
+    } else {
+      return(wilcox.test(x, y, alternative = al, paired = FALSE))
+    }
+  }
+}
+```
+Here are our null hypothesis and alternative hypothesis.  
+H~0~: The **real prevalence** is lower or no difference when compared to **predicted prevalence**.  
+H~A~: The **real prevalence** is larger when compared to **predicted prevalence**.
+```{r}
+age_groups <- unique(subuse_final$age)
+# create pable to store each age groups' value
+pable <- data.frame(matrix(nrow = length(age_groups), ncol = 2))
+rownames(pable) <- age_groups
+colnames(pable) <- c("Male_p_value", "Female_p_value")
+for (g in age_groups) {
+  for (gender in c("Male", "Female")) {
+    # get specific gender's specific age group's value
+    g_pre <- filter(subuse_pre, age == g, sex == gender)
+    g_post <- filter(subuse_post, age == g, sex == gender)
+    # Order the data.frames based on year
+    g_pre <- g_pre[order(g_pre$year), ]
+    g_post <- g_post[order(g_post$year), ]
+    # make the model and get predicted value
+    reg <- lm(val_percent ~ year, g_pre)
+    years <- g_post$year
+    pre_data <- predict(reg, newdata = data.frame(year = years))
+    real_data <- g_post$val_percent
+    # calculate the p.value
+    pable[g, paste0(gender, "_p_value")] <- clever_test(real_data, pre_data, "greater", TRUE)$p.value
+  }
+}
+kable(pable)
+```
+According to pable, we can't reject H~0~ in **male in 25 to 29** and **female in 40 to 44 and 45 to 49**, whereas we can reject H~0~ in rest groups. Therefore we can confirm a prevalence increase due to opioid epidemic in them. We then use cohen'd, which is a nice method to measure effect size, to measure difference size between predicted and real data to find the most affected age group.
+```{r}
+# create cable to store each age groups' value
+cable <- data.frame(matrix(nrow = length(age_groups), ncol = 2))
+rownames(cable) <- age_groups
+colnames(cable) <- c("Male_cohens_d", "Female_cohens_d")
+# calculate each age groups cohen.d
+for (g in age_groups) {
+  for (gender in c("Male", "Female")) {
+    if (!((gender == "Male" && g %in% c("25 to 29")) ||
+          (gender == "Female" && g %in% c("40 to 44", "45 to 49")))) {
+      g_pre <- filter(subuse_pre, age == g, sex == gender)
+      g_post <- filter(subuse_post, age == g, sex == gender)
+      g_pre <- g_pre[order(g_pre$year), ]
+      g_post <- g_post[order(g_post$year), ]
+      reg <- lm(val_percent ~ year, g_pre)
+      years <- g_post$year
+      pre_data <- predict(reg, newdata = data.frame(year = years))
+      real_data <- g_post$val_percent
+      cable[g, paste0(gender, "_cohens_d")] <- cohen.d(real_data,pre_data)$estimate
+    }
+  }
+}
+kable(cable)
+```
+According to cable, we determined the age group that has biggest change is both **65 to 69** in male and female.
+
+### Part 2: Ask own question
+
+When we were searching parameters of `ggplot2` package, we found that `ggplot2` allows us to plot data onto world map. We thought that this was very similar to our part1Q1 situation, so we want to **visualize the data from part1Q1 in a more intuitive way and do some comparison with it**.  
+However, during our search, we found that there is no existed function that can map data directly to World Bank location, so we designed a new function to achieve this goal(`WBdataMerge`). We can then use this function to solve our own question mentioned above.  
+Note: Exact name in each vector are omitted here for clearer presentation of function logic and some countries(regions) are omitted as they are not shown in world bank website. 
+```{r, include=FALSE}
+WBdataMerge <- function(UseData){
+  
+  # Following vectors stores the mapping relationship between Worldbank location and real country(region) name that are stored in map_data("world")
+  # some countriess(regions) are omitted as they are not shown in world bank website. 
+  South_Asia=c("Afghanistan", "Bangladesh", "Bhutan", "India", "Maldives", "Nepal", "Pakistan", "Sri Lanka")
+  Middle_East_North_Africa=c("Algeria", "Bahrain", "Djibouti", "Egypt", "Iran", "Iraq", "Israel", "Jordan", "Kuwait", "Lebanon", "Libya", "Malta", "Morocco", "Oman", "Qatar", "Saudi Arabia", "Syria", "Tunisia", "United Arab Emirates", "Yemen")
+  East_Asia_Pacific=c("American Samoa", "Australia", "Brunei", "Cambodia", "China", "Fiji", "French Polynesia", "Guam", "Indonesia", "Japan", "Kiribati", "North Korea", "South Korea", "Laos", "Malaysia", "Marshall Islands", "Micronesia", "Mongolia", "Myanmar", "Nauru", "New Caledonia", "New Zealand", "Palau", "Papua New Guinea", "Philippines", "Samoa", "Singapore", "Solomon Islands", "Thailand", "Timor-Leste", "Tonga", "Vanuatu", "Vietnam", "Cook Islands", "Taiwan")
+  North_America=c("Bermuda", "Canada", "USA")
+  Sub_Saharan_Africa=c("Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cape Verde", "Cameroon", "Central African Republic", "Chad", "Comoros", "Democratic Republic of the Congo", "Republic of Congo", "Ivory Coast", "Equatorial Guinea", "Eritrea", "Ethiopia", "Gabon", "Gambia", "Ghana", "Guinea", "Guinea-Bissau", "Kenya", "Lesotho", "Liberia", "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius", "Mozambique", "Namibia", "Niger", "Nigeria", "Rwanda", "Sao Tome and Principe", "Senegal", "Seychelles", "Sierra Leone", "Somalia", "South Africa", "South Sudan", "Sudan", "Tanzania", "Togo", "Uganda", "Zambia", "Zimbabwe", "Swaziland")
+  Europe_Central_Asia=c("Albania", "Andorra", "Armenia", "Austria", "Azerbaijan", "Belarus", "Belgium", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Faroe Islands", "Finland", "France", "Georgia", "Germany", "Greece", "Greenland","Hungary", "Iceland", "Ireland","Isle of Man", "Italy", "Kazakhstan", "Kosovo", "Kyrgyzstan", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg", "North Macedonia", "Moldova", "Monaco", "Montenegro", "Netherlands", "Norway", "Poland", "Portugal", "Romania", "Russia", "San Marino", "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland", "Tajikistan", "Turkey", "Turkmenistan", "Ukraine", "UK", "Uzbekistan", "Guernsey", "Jersey")
+  Latin_America_Caribbean=c("Antigua", "Barbuda", "Argentina", "Aruba", "Bahamas", "Barbados", "Belize", "Bolivia", "Brazil","Virgin Island","Cayman Islands", "Chile", "Colombia", "Costa Rica", "Cuba", "Dominica", "Dominican Republic", "Ecuador", "El Salvador", "Grenada", "Guatemala", "Guyana", "Haiti", "Honduras", "Jamaica", "Mexico", "Nicaragua", "Panama", "Paraguay", "Peru","Puerto Rico", "Sint Maarten", "Saint Kitts", "Nevis", "Saint Lucia", "Saint Martin", "Saint Vincent", "Grenadines", "Suriname", "Trinidad", "Tobago","Turks and Caicos Islands", "Uruguay", "Venezuela", "Anguilla", "Saint Barthelemy","Curacao", "French Guiana")
+  
+  # wname to store country(region) name
+  wname = c()
+  # wdata to store location value
+  wdata = c()
+  # although following dataframe construction process are quite repetitive, as we want to update the wname and wdata, we didn't use function
+  # map location data to country(region)
+  AddData = filter(UseData, location=="South Asia")$val_percent
+  for(i in South_Asia){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location=="Middle East & North Africa")$val_percent
+  for(i in Middle_East_North_Africa){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location=="Middle East & North Africa")$val_percent
+  for(i in Middle_East_North_Africa){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location=="East Asia & Pacific")$val_percent
+  for(i in East_Asia_Pacific){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location=="North America")$val_percent
+  for(i in North_America){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location=="Sub-Saharan Africa")$val_percent
+  for(i in Sub_Saharan_Africa){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location=="Europe & Central Asia")$val_percent
+  for(i in Europe_Central_Asia){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location=="Latin America & Caribbean")$val_percent
+  for(i in Latin_America_Caribbean){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  # combine wname and wdata together to dataframe
+  result_data = as.data.frame(cbind(wname, wdata))
+  # change the data column to numeric class
+  result_data$wdata = as.numeric(result_data$wdata)
+  # get the world map
+  world_map = map_data("world")
+  # merge according to the name
+  merged_data <- left_join(world_map, result_data, by = c('region' = 'wname'))
+  return(merged_data)
+}
+```
+
+```{r, eval=FALSE, tidy=FALSE}
+WBdataMerge <- function(UseData){
+  # following vectors store how Worldbank data map to country names.
+  South_Asia = c("...")
+  Middle_East_North_Africa = c("...")
+  East_Asia_Pacific = c("...")
+  North_America = c("...")
+  Sub_Saharan_Africa = c("...")
+  Europe_Central_Asia = c("...")
+  Latin_America_Caribbean = c("...")
+  
+  # wname to store country(region) name
+  wname = c()
+  # wdata to store location value
+  wdata = c()
+  # though following "map location data to country" process are quite repetitive, as we
+  # want to update the wname and wdata, we didn't use function. 
+  # Same content are shown as ... for clearer logic since 2nd for-loop.
+  AddData = filter(UseData, location == "South Asia")$val_percent
+  for(i in South_Asia){
+    wname = c(wname, i)
+    wdata = c(wdata, AddData)
+  }
+  AddData = filter(UseData, location == "Middle East & North Africa")$val_percent
+  for(i in Middle_East_North_Africa){...}
+  AddData = filter(UseData, location == "Middle East & North Africa")$val_percent
+  for(i in Middle_East_North_Africa){...}
+  AddData = filter(UseData, location == "East Asia & Pacific")$val_percent
+  for(i in East_Asia_Pacific){...}
+  AddData = filter(UseData, location == "North America")$val_percent
+  for(i in North_America){...}
+  AddData = filter(UseData, location == "Sub-Saharan Africa")$val_percent
+  for(i in Sub_Saharan_Africa){...}
+  AddData = filter(UseData, location == "Europe & Central Asia")$val_percent
+  for(i in Europe_Central_Asia){...}
+  AddData = filter(UseData, location == "Latin America & Caribbean")$val_percent
+  for(i in Latin_America_Caribbean){...}
+  
+  # combine wname and wdata together to dataframe
+  result_data = as.data.frame(cbind(wname, wdata))
+  # change the data column to numeric class
+  result_data$wdata = as.numeric(result_data$wdata)
+  # get the world map
+  world_map = map_data("world")
+  # merge according to the name
+  merged_data <- left_join(world_map, result_data, by = c('region' = 'wname'))
+  return(merged_data)
+}
+```
+As in part1Q1, we only checked the data for 40-44 aged male's alcohol-related deaths in different region. We wonder how about the female? And what's the relationship between them? If answers to these questions are known, doctors and governments could take more targeted and effective measures to deal with this kind of death.  
+Therefore, we use `WBdataMerge` and `ggplot` to visualize **40-44 aged male and female alcohol-related deaths in different region** (Figure 2.1 for male and Figure 2.2 for female).  
+```{r, tidy=FALSE, fig.width=10, fig.height=6, fig.show="hold"}
+# filter out the data
+subuse_4_male = subuse_1
+subuse_4_female = subuse_final %>% 
+  filter(year==2019, age == '40 to 44', sex == 'Female', 
+         measure == 'Deaths', cause == 'Alcohol use disorders')
+# To uniform each map's color-data relationship, we first get their range
+subuse_4_min = min(c(subuse_4_male$val_percent, subuse_4_female$val_percent))
+subuse_4_max = max(c(subuse_4_male$val_percent, subuse_4_female$val_percent))
+# slightly move the boundary to plot all regions with color
+subuse_4_range = range(subuse_4_min - 1e-5, subuse_4_max + 1e-5)
+# Male plot (Figure 2.1)
+ggplot(WBdataMerge(subuse_4_male), 
+       aes(x = long, y = lat, group = group, fill = wdata)) +
+  geom_polygon(color = "black") +
+  labs(title = "40-44 aged male alcohol-related deaths in 2019", 
+       x="longitude", y="latitude", caption = "Figure 2.1") +
+  theme_minimal() +
+  scale_fill_gradient(limits = subuse_4_range, low = "lightblue", high = "darkblue") +
+  guides(fill = guide_colorbar(title = "Data"))
+# Female Plot (Figure 2.2)
+ggplot(WBdataMerge(subuse_4_female), 
+       aes(x = long, y = lat, group = group, fill = wdata)) +
+  geom_polygon(color = "black") +
+  labs(title = "40-44 aged female alcohol-related deaths in 2019", 
+       x="longitude", y="latitude", caption = "Figure 2.2") +
+  theme_minimal() +
+  scale_fill_gradient(limits = subuse_4_range, low = "lightblue", high = "darkblue") +
+  guides(fill = guide_colorbar(title = "Data"))
+```
+According to figure 2.1 and 2.2, male has higher death rate than female in 40 to 44 age group in 2019. To quantitative the relationship, we then use the `clever_test` to test their difference.  
+H~0~: In 2019 and age group of 40 to 44, **male**'s alcohol-related death rate is lower than or no different from **female**.  
+H~A~: In 2019 and age group of 40 to 44, **male**'s alcohol-related death rate is larger than **female**.  
+To save the relationship between each location, we use paired version:
+```{r, collapse=TRUE}
+# ordered the data to same sequence and get val percent
+subuse_4_male_val = subuse_4_male[order(subuse_4_male$location), ]$val_percent
+subuse_4_female_val = subuse_4_female[order(subuse_4_female$location), ]$val_percent
+# compare
+clever_test(subuse_4_male_val, subuse_4_female_val,"greater", TRUE)
+```
+The p.value is smaller than $\alpha$ (we use 0.05 here), so we could reject the null hypothesis.
